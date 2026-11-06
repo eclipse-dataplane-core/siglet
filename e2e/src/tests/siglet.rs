@@ -473,9 +473,9 @@ async fn step_prepare(ctx: &TestCtx) -> Result<()> {
     let message = serde_json::json!({
         "datasetId": ctx.dataset_id,
         "participantId": "did:web:consumer",
-        "processId": ctx.consumer_flow_id,
+        "dataFlowId": ctx.consumer_flow_id,
         "agreementId": ctx.agreement_id,
-        "transferType": "http-pull",
+        "profile": "http-pull",
         "dataspaceContext": "test-dataspace",
         "callbackAddress": "https://consumer.example.com/callback",
         "messageId": format!("msg-prepare-{}", ctx.run_id),
@@ -522,9 +522,9 @@ async fn step_start(ctx: &TestCtx) -> Result<StartOutput> {
     let message = serde_json::json!({
         "datasetId": ctx.dataset_id,
         "participantId": "did:web:provider",
-        "processId": ctx.provider_flow_id,
+        "dataFlowId": ctx.provider_flow_id,
         "agreementId": ctx.agreement_id,
-        "transferType": "http-pull",
+        "profile": "http-pull",
         "dataspaceContext": "test-dataspace",
         "callbackAddress": "https://provider.example.com/callback",
         "messageId": format!("msg-start-{}", ctx.run_id),
@@ -701,12 +701,14 @@ async fn retrieve_and_verify_token(ctx: &TestCtx) -> Result<String> {
         .with_context(|| format!("Retrieved token should not be empty, got: {}", get_result))?
         .to_string();
 
-    // `/tokens/verify` is protected too, but has no participant context to bind `sub`
-    // against — the scoped token alone authorizes it.
+    // `/tokens/verify` only returns claims for tokens issued for the caller's own participant
+    // context (`sub`), so it is called as the provider: the provider's start call issued this
+    // token, and the provider's data plane is the party that verifies it when presented.
+    let verify_auth = ctx.token_api_token(&ctx.provider_participant_context_id).await?;
     let verify_response = ctx
         .client
         .post(&ctx.verify_url)
-        .header("Authorization", format!("Bearer {}", api_auth))
+        .header("Authorization", format!("Bearer {}", verify_auth))
         .header("Content-Type", "application/json")
         .json(&serde_json::json!({ "token": api_token, "audience": "did:web:provider" }))
         .send()
@@ -834,8 +836,10 @@ async fn do_refresh(ctx: &TestCtx, api_token: &str, refresh_token: &str) -> Resu
 async fn check_token_rotation(ctx: &TestCtx, old_token: &str, new_token: &str) -> Result<()> {
     // The verify endpoint is auth-protected; supply a token-API token so requests reach
     // the handler and the 401/200 below reflect the *verified* token's state (revoked vs
-    // valid), not the auth layer rejecting the call itself.
-    let api_auth = ctx.token_api_token(&ctx.consumer_participant_context_id).await?;
+    // valid), not the auth layer rejecting the call itself. It must be the provider's: verify only
+    // returns claims for tokens issued for the caller's own participant context, so a consumer
+    // caller would get 401 for *both* tokens and the stale-token assertion would pass vacuously.
+    let api_auth = ctx.token_api_token(&ctx.provider_participant_context_id).await?;
     let stale_response = ctx
         .client
         .post(&ctx.verify_url)
