@@ -390,7 +390,7 @@ differs is the default scope and which routes are protected.
 | Route                                     | Auth required | Notes                                              |
 |-------------------------------------------|---------------|----------------------------------------------------|
 | `GET`/`DELETE /tokens/{participant_context_id}/{id}` | yes | `sub` must equal the `{participant_context_id}` path segment, unless the caller holds the [admin scope](#admin-scope) |
-| `POST /tokens/verify`                     | yes           | No participant context, so `sub` is not bound      |
+| `POST /tokens/verify`                     | yes           | Only tokens issued for the caller's `sub` verify; others get `401`, unless the caller holds the [admin scope](#admin-scope) |
 | `GET /keys` (JWKS)                        | no            | Public discovery endpoint                          |
 | `GET /` , `GET /health`                   | no            | Liveness/readiness                                 |
 
@@ -422,7 +422,8 @@ The grant is *additive* — it relaxes the `sub` check only, and does not stand 
 | `siglet-token-api:admin`                    | `403` — missing the required scope        |
 
 Everything else is unchanged: signature, `aud`, `exp`/`nbf` and the required-scope check all
-still apply, and `POST /tokens/verify` (which never bound `sub`) behaves as before.
+still apply. On `POST /tokens/verify`, the admin scope likewise lets the caller verify tokens issued for any
+participant context.
 
 The feature is **off unless configured** — with the key absent, `siglet-token-api:admin` is
 just an unrecognised scope string and `sub` stays bound. When it *is* configured, siglet
