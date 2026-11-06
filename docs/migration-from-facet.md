@@ -124,10 +124,11 @@ paths).
   `test_signaling_auth_rejects_invalid_tokens`, `test_token_api_auth_rejects_invalid_tokens`).
 - CI on `main` (`1246572`): `Rust` and `Build and Publish Docker Siglet Image` (amd64 + arm64) pass.
 
-## Remaining steps
+## Follow-up steps
 
-1. Run **Refresh Dependencies** and merge its PR, filing IP reviews for any flagged dependency.
-2. Release `0.1.7` with **Release Siglet**.
-3. Remove siglet from dsdk-facet-rs: `siglet/`, `siglet-tck/`, the siglet e2e suite, the siglet docs, and the siglet
-   workflows. The Vault sidecar suite stays there. Add a pointer to this repository and the new image location in
-   facet's README.
+- [x] Release `0.1.7` with **Release Siglet** (tag `v0.1.7`, image `ghcr.io/eclipse-dataplane-core/siglet:0.1.7`),
+  and validate it in a core platform bump.
+- [x] Run **Refresh Dependencies** and merge its PR, filing IP reviews for any flagged dependency.
+- [x] Remove siglet from dsdk-facet-rs: `siglet/`, `siglet-tck/`, the siglet e2e suite, the siglet docs, and the
+  siglet workflows (dsdk-facet-rs #129). The Vault sidecar suite stays there, and facet's README points to this
+  repository and the new image location.
