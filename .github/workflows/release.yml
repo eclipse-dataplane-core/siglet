@@ -1,10 +1,10 @@
 name: Release Siglet
 
-# Manual release for the siglet Docker image. siglet is `publish = false`, so release-plz
-# never tags or releases it — this workflow owns its lifecycle.
+# Manual release for the siglet Docker image. siglet is not published to crates.io
+# (`publish = false`); this workflow owns its whole release lifecycle.
 #
 # Ordering is deliberate: validate -> test + license check -> build+push the image -> only then
-# create the `siglet-v<version>` tag + GitHub Release. The Release is the human-facing "this
+# create the `v<version>` tag + GitHub Release. The Release is the human-facing "this
 # version is out" marker, so it must not appear before the image actually exists in GHCR.
 # Because the image build is a reusable-workflow call (`needs: build`), the release step can't
 # run unless the build succeeded — no polling, no draft/un-draft dance.
@@ -47,7 +47,7 @@ jobs:
             echo "::error::version must be MAJOR.MINOR.PATCH (e.g. 0.1.0), got '$version'"
             exit 1
           fi
-          tag="siglet-v${version}"
+          tag="v${version}"
           if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
             echo "::error::tag ${tag} already exists"
             exit 1

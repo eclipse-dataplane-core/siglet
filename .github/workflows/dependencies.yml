@@ -1,0 +1,73 @@
+name: Refresh Dependencies
+
+# Regenerates DEPENDENCIES.txt with the Eclipse Dash License Tool (scripts/check-dependencies.sh)
+# and pushes it to a `dependencies` branch. A human then opens the PR from that branch — pushing
+# a branch is allowed for GITHUB_TOKEN even when the org forbids Actions from *creating* PRs, and
+# a human-opened PR also gets normal CI.
+#
+# The run fails if any dependency is restricted or rejected, i.e. still needs an Eclipse IP Team
+# review (file those with scripts/request-dependency-review.sh). Dispatching with `strict: false`
+# downgrades that gate to a warning so the refreshed summary is still pushed.
+
+on:
+  workflow_dispatch:
+    inputs:
+      strict:
+        description: "Fail if any dependency is restricted/rejected by Eclipse Dash (uncheck to only warn)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dependencies
+  cancel-in-progress: false
+
+env:
+  DEPENDENCIES_BRANCH: dependencies
+
+jobs:
+  refresh:
+    name: Refresh DEPENDENCIES.txt
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Java (for Eclipse Dash License Tool)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Check dependency licenses (Eclipse Dash)
+        run: scripts/check-dependencies.sh
+        env:
+          DASH_STRICT: ${{ inputs.strict }}
+
+      - name: Push dependencies branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$DEPENDENCIES_BRANCH"
+
+          if git diff --quiet; then
+            echo "DEPENDENCIES.txt is up to date — nothing to push." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          git add DEPENDENCIES.txt
+          git commit -m "chore: refresh DEPENDENCIES.txt"
+          git push --force origin "$DEPENDENCIES_BRANCH"
+
+          {
+            echo "### Dependencies branch pushed :rocket:"
+            echo ""
+            echo "Open the PR (human-authored, so it gets full CI):"
+            echo ""
+            echo "https://github.com/${GITHUB_REPOSITORY}/compare/main...${DEPENDENCIES_BRANCH}?expand=1"
+          } >> "$GITHUB_STEP_SUMMARY"

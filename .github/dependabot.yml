@@ -1,0 +1,15 @@
+version: 2
+updates:
+  # Monitor workspace root
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-patch"]
+      # tokio >= 1.54 panics pingora 0.9.0 (pulled in via dsdk-facet-core). Drop this once
+      # facet ships a pingora release that supports it.
+      - dependency-name: "tokio"
+        versions: [">= 1.54"]
+    open-pull-requests-limit: 10

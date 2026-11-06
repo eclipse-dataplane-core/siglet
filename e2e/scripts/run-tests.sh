@@ -44,7 +44,7 @@ if command -v cargo-nextest &> /dev/null; then
     echo "Using cargo-nextest for test execution..."
     # Run with --run-ignored only to run tests marked with #[ignore]
     # Tests now support parallel execution with unique pod names
-    cargo nextest run --package dsdk-facet-e2e-tests --features e2e --run-ignored only --no-capture
+    cargo nextest run --package siglet-e2e-tests --features e2e --run-ignored only --no-capture
     TEST_EXIT_CODE=$?
 else
     echo "cargo-nextest not found, falling back to cargo test"
@@ -52,7 +52,7 @@ else
     echo "  cargo install cargo-nextest --locked"
     echo ""
     # Run with --ignored flag to run tests marked with #[ignore]
-    cargo test --package dsdk-facet-e2e-tests --features e2e -- --ignored --nocapture
+    cargo test --package siglet-e2e-tests --features e2e -- --ignored --nocapture
     TEST_EXIT_CODE=$?
 fi
 

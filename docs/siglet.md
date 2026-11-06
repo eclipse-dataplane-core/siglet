@@ -62,8 +62,9 @@ Siglet exposes four HTTP servers:
 
 ## Token Shape
 
-Siglet issues JWTs signed with an Ed25519 or RSA key managed in Vault (via the transit secrets engine). The token is a
-standard JWT with the following claims:
+Siglet issues JWTs signed with an Ed25519 key managed in Vault (via the transit secrets engine), using the `EdDSA`
+algorithm. Other transit key types (e.g. RSA, ECDSA) are not supported for issued tokens. The token is a standard JWT
+with the following claims:
 
 ### Standard Claims
 
@@ -1096,7 +1097,7 @@ key. The key must be created before starting Siglet.
 # Enable the transit engine (if not already enabled)
 vault secrets enable transit
 
-# Create the signing key (Ed25519 recommended)
+# Create the signing key (must be Ed25519; other key types are not supported)
 vault write -f transit/keys/signing-siglet type=ed25519
 ```
 

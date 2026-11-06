@@ -26,7 +26,6 @@ verify check is a no-op and only the image rebuild + test execution happens.
 | `setup`              | Bootstrap infra + build/load images (full ready state)                  |
 | `ensure-environment` | Run setup.sh only if `verify-setup.sh` fails — used as `test` prereq    |
 | `build-siglet`       | Build Siglet image and load into Kind                                   |
-| `build`              | Build vault-test image and load into Kind                               |
 | `setup-consumer-did` | (Re)provision consumer DID server — idempotent                          |
 | `test`               | Bootstrap environment (if needed) + rebuild images + run tests          |
 | `test-fast`          | Alias for `test`                                                        |
@@ -36,9 +35,9 @@ verify check is a no-op and only the image rebuild + test execution happens.
 ### Setup vs. test boundary
 
 `setup.sh` provisions infrastructure only (Kind cluster, Vault, PostgreSQL,
-consumer DID). Application image builds (`siglet:local`, `vault-test:local`)
-are owned by the `build` / `build-siglet` targets. This split means
-`make test` from a clean machine bootstraps infra once and builds images
+consumer DID). The application image build (`siglet:local`)
+is owned by the `build-siglet` target. This split means
+`make test` from a clean machine bootstraps infra once and builds the image
 exactly once — no duplicate `kind load` pass.
 
 ## Consumer DID
@@ -66,8 +65,8 @@ cargo install cargo-nextest --locked
 
 ```bash
 # Single test (nextest)
-cargo nextest run -p dsdk-facet-e2e-tests --features e2e --run-ignored only -E 'test(test_pull_operations)' --no-capture
+cargo nextest run -p siglet-e2e-tests --features e2e --run-ignored only -E 'test(test_pull_operations)' --no-capture
 
 # All e2e tests
-cargo nextest run -p dsdk-facet-e2e-tests --features e2e --run-ignored only
+cargo nextest run -p siglet-e2e-tests --features e2e --run-ignored only
 ```

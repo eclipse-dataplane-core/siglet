@@ -11,9 +11,9 @@ path = "src/main.rs"
 
 [dependencies]
 # Facet library crates
-dsdk-facet-core = { path = "../crates/facet-core" , version = "0.1.1" }
-dsdk-facet-postgres = { path = "../crates/facet-postgres", version = "0.1.1" }
-dsdk-facet-hashicorp-vault = { path = "../crates/facet-hashicorp-vault", version = "0.1.1" }
+dsdk-facet-core = "0.1.1"
+dsdk-facet-postgres = "0.1.1"
+dsdk-facet-hashicorp-vault = "0.1.1"
 
 # Eclipse Data Plane SDK
 dataplane-sdk = "0.1.3"
@@ -50,8 +50,8 @@ uuid = { workspace = true }
 
 [dev-dependencies]
 base64 = { workspace = true }
-dsdk-facet-core = { path = "../crates/facet-core", features = ["test-fixtures"] }
-dsdk-facet-testcontainers = { path = "../crates/facet-testcontainers" }
+dsdk-facet-core = { version = "0.1.1", features = ["test-fixtures"] }
+dsdk-facet-testcontainers = "0.1.1"
 ed25519-dalek = { workspace = true }
 jsonwebtoken = { workspace = true, features = ["rust_crypto"] }
 wiremock = { workspace = true }

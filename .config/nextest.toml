@@ -1,0 +1,34 @@
+# Nextest configuration for siglet
+# https://nexte.st/book/configuration.html
+
+[profile.default]
+# Limit test parallelism to avoid Docker resource contention
+# Testcontainers can overwhelm Docker when too many tests start containers simultaneously
+test-threads = 8
+
+# Increase timeouts for container startup
+# Containers (Postgres, Keycloak, Vault) need time to initialize
+slow-timeout = { period = "60s", terminate-after = 2 }
+
+# Retry flaky tests once (useful for container timing issues)
+retries = 1
+
+# Show test output for failed tests
+failure-output = "immediate-final"
+
+# Status level for tests
+status-level = "pass"
+
+[[profile.default.overrides]]
+# E2E tests interact with Kubernetes cluster and need longer timeouts
+# Now supports parallel execution thanks to unique pod names (PID-based)
+filter = 'package(siglet-e2e-tests)'
+slow-timeout = { period = "180s" }
+# Allow up to 2 e2e tests to run concurrently to avoid overwhelming the cluster
+threads-required = 2
+
+[profile.ci]
+# CI-specific settings
+retries = 2
+failure-output = "final"
+status-level = "all"

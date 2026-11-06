@@ -15,7 +15,7 @@
 //! These tests require a Kind cluster with Vault deployed.
 //! Run setup first: `cd e2e && ./scripts/setup.sh`
 //!
-//! Run tests with: `cargo test --package dsdk-facet-e2e-tests --features e2e`
+//! Run tests with: `cargo test --package siglet-e2e-tests --features e2e`
 
 pub mod utils;
 

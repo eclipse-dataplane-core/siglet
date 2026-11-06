@@ -138,7 +138,7 @@ if [ $ERRORS -eq 0 ]; then
     echo "======================================"
     echo ""
     echo "Environment is ready for E2E tests."
-    echo "Run: cargo test --package dsdk-facet-e2e-tests --features e2e"
+    echo "Run: cargo test --package siglet-e2e-tests --features e2e"
     exit 0
 else
     echo "✗ ${ERRORS} check(s) failed"

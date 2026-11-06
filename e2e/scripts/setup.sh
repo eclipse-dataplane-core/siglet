@@ -112,9 +112,9 @@ echo ""
 
 # NOTE: This script intentionally does NOT build/load application images. Image
 # build + load is the responsibility of the test-runner targets (e.g. `make test`
-# → build-and-load-image.sh + build-and-load-siglet.sh). Keeping the split lets
+# → build-and-load-siglet.sh). Keeping the split lets
 # `make test` bootstrap from a clean machine without a duplicate build pass:
-# `ensure-environment` calls this script, then `make test` rebuilds the images
+# `ensure-environment` calls this script, then `make test` rebuilds the image
 # exactly once before running.
 
 echo "======================================"
@@ -122,15 +122,15 @@ echo "E2E infrastructure setup complete!"
 echo "======================================"
 echo ""
 echo "Infrastructure ready: Kind cluster, Vault, PostgreSQL, consumer DID."
-echo "Application images (siglet, vault-test) are NOT built by this script."
+echo "The siglet image is NOT built by this script."
 echo ""
 echo "Next steps:"
-echo "  - Run tests (will build images on first run): cd e2e && make test"
-echo "  - Or build images standalone: cd e2e && make build build-siglet"
+echo "  - Run tests (builds the siglet image): cd e2e && make test"
+echo "  - Or build images standalone: cd e2e && make build-siglet"
 echo "  - Cleanup: cd e2e && ./scripts/cleanup.sh"
 echo ""
 echo "Useful commands:"
 echo "  - View Vault logs: kubectl logs -n ${NAMESPACE} -l app=vault"
 echo "  - Port-forward Vault UI: kubectl port-forward -n ${NAMESPACE} svc/vault 8200:8200"
 echo "  - List pods: kubectl get pods -n ${NAMESPACE}"
-echo "  - Rebuild test image: cd e2e && ./scripts/build-and-load-image.sh"
+echo "  - Rebuild siglet image: cd e2e && ./scripts/build-and-load-siglet.sh"

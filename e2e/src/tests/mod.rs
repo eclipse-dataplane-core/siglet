@@ -11,4 +11,3 @@
 //
 
 pub mod siglet;
-pub mod vault_sidecar;
