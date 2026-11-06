@@ -1,4 +1,4 @@
-# siglet
+![](./docs/logo/siglet.logo.svg)
 
 Siglet is a Data Plane built on the [Eclipse Data Plane SDK for Rust](https://github.com/eclipse-dataplane-core/dataplane-sdk-rust).
 It implements Data Plane Signaling and issues Ed25519-signed access tokens backed by HashiCorp Vault, with PostgreSQL for
