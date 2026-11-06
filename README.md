@@ -24,7 +24,8 @@ Images are published to `ghcr.io/eclipse-dataplane-core/siglet`:
 - `dev` for the current `main`
 
 Images for `0.1.6` and earlier were published from the Facet-RS repository as
-`ghcr.io/eclipse-dataplane-core/dsdk-facet-rs/siglet`.
+`ghcr.io/eclipse-dataplane-core/dsdk-facet-rs/siglet`. See [docs/migration-from-facet.md](docs/migration-from-facet.md)
+for what changed in the move.
 
 ```bash
 docker build -f siglet/Dockerfile -t siglet:local .
