@@ -30,7 +30,7 @@ uuid = { version = "1", features = ["v4"] }
 wiremock = "0.6"
 # `json` is not a default feature but is required for `cel::Value::json()`, which converts
 # evaluation results back into `serde_json::Value` for the JWT claim map.
-cel = { version = "0.15.0", features = ["json"] }
+cel = { version = "0.16.0", features = ["json"] }
 
 [workspace.lints.clippy]
 unwrap_used = "deny"
