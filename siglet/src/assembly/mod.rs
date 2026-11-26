@@ -90,6 +90,10 @@ pub struct SigletRuntime<C: TransactionalContext> {
     pub refresh_handler: TokenRefreshHandler,
     pub token_api_handler: TokenApiHandler,
     pub management_handler: ManagementApiHandler,
+    /// The token manager that issues, renews and validates Siglet's access tokens. The handlers
+    /// above already hold it; it is exposed for callers (e.g. integration tests) that need to
+    /// mint or validate tokens directly.
+    pub token_manager: Arc<dyn TokenManager>,
 }
 
 // ============================================================================
@@ -106,7 +110,7 @@ pub async fn assemble_memory(
     http_client: Client,
 ) -> Result<SigletRuntime<MemoryContext>, SigletError> {
     let vault_client: Arc<dyn VaultSigningClient> = create_vault_client(&cfg.vault).await?;
-    let (jwt_generator, jwt_verifier) = create_jwt_components(vault_client.clone(), cfg.vault.use_http_resolution);
+    let (jwt_generator, jwt_verifier) = create_jwt_components(vault_client.clone(), cfg);
     let server_secret = generate_server_secret(cfg)?;
 
     let (renewable_token_store, lock_manager) = assemble_memory_stores();
@@ -115,7 +119,8 @@ pub async fn assemble_memory(
     let transfer_type_repo =
         Arc::new(MemoryTransferTypeMappingStore::default()) as Arc<dyn TransferTypeMappingRepository>;
 
-    let (vault_resolver, vault_provider_verifier) = create_vault_resolver_components(vault_client.clone()).await?;
+    let (vault_resolver, vault_provider_verifier) =
+        create_vault_resolver_components(vault_client.clone(), cfg.token.signing_algorithm).await?;
     let token_manager = create_token_manager(
         cfg,
         server_secret,
@@ -157,7 +162,7 @@ pub async fn assemble_postgres(
 ) -> Result<SigletRuntime<PgContext>, SigletError> {
     let vault_client = create_vault_client(&cfg.vault).await?;
     let signing_client = vault_client.clone() as Arc<dyn VaultSigningClient>;
-    let (jwt_generator, jwt_verifier) = create_jwt_components(signing_client.clone(), cfg.vault.use_http_resolution);
+    let (jwt_generator, jwt_verifier) = create_jwt_components(signing_client.clone(), cfg);
     let server_secret = generate_server_secret(cfg)?;
 
     let StorageBackend::PostgresVault { url, pool: pool_cfg } = &cfg.storage_backend else {
@@ -188,7 +193,8 @@ pub async fn assemble_postgres(
         .map_err(|e| SigletError::Token(Box::new(e)))?;
     let transfer_type_repo = transfer_type_store as Arc<dyn TransferTypeMappingRepository>;
 
-    let (vault_resolver, vault_provider_verifier) = create_vault_resolver_components(signing_client.clone()).await?;
+    let (vault_resolver, vault_provider_verifier) =
+        create_vault_resolver_components(signing_client.clone(), cfg.token.signing_algorithm).await?;
     let token_manager = create_token_manager(
         cfg,
         server_secret,
@@ -418,6 +424,7 @@ pub fn assemble_token_api(
 /// Initializes the Vault verification key resolver and returns it alongside the verifier it backs.
 async fn create_vault_resolver_components(
     vault_client: Arc<dyn VaultSigningClient>,
+    signing_algorithm: Option<SigningAlgorithm>,
 ) -> Result<(Arc<VaultVerificationKeyResolver>, Arc<dyn JwtVerifier>), SigletError> {
     let vault_resolver = Arc::new(
         VaultVerificationKeyResolver::builder()
@@ -425,6 +432,8 @@ async fn create_vault_resolver_components(
             // This resolver loads Siglet's own signing key, so scope the Vault access token to
             // Siglet's participant context.
             .signing_context(ParticipantContext::builder().id(SIGLET_PC_ID).build())
+            // Published as the JWK `alg`; must match what the generator signs with.
+            .maybe_algorithm(signing_algorithm)
             .build(),
     );
     vault_resolver
@@ -456,7 +465,7 @@ fn build_runtime<C: TransactionalContext>(
         token_store,
         lock_manager,
         vault_client,
-        token_manager,
+        token_manager.clone(),
         mapping_repo.clone(),
         http_client,
         endpoint_policy,
@@ -470,30 +479,35 @@ fn build_runtime<C: TransactionalContext>(
         refresh_handler,
         token_api_handler,
         management_handler,
+        token_manager,
     }
 }
 
 /// Creates a JWT verifier backed by the Vault signing key.
+///
+/// No algorithm pin is needed: the resolver tags each key with its Vault key type and publishes
+/// it as a JWK carrying the exact `alg` Siglet signs with, and the verifier enforces both.
 fn create_vault_verifier(resolver: Arc<VaultVerificationKeyResolver>) -> Arc<dyn JwtVerifier> {
-    Arc::new(
-        LocalJwtVerifier::builder()
-            .verification_key_resolver(resolver)
-            .signing_algorithm(SigningAlgorithm::EdDSA)
-            .build(),
-    )
+    Arc::new(LocalJwtVerifier::builder().verification_key_resolver(resolver).build())
 }
 
 /// Creates JWT generator and verifier components
+///
+/// The generator signs with the algorithm implied by the Vault key type, or the configured
+/// `token.signing_algorithm`. The DID verifier accepts `token.allowed_algorithms` (default: all
+/// supported algorithms).
 fn create_jwt_components(
     vault_client: Arc<dyn VaultSigningClient>,
-    use_http_resolution: bool,
+    cfg: &SigletConfig,
 ) -> (Arc<dyn JwtGenerator>, Arc<dyn JwtVerifier>) {
+    let use_http_resolution = cfg.vault.use_http_resolution;
     let jwt_generator = Arc::new(
         VaultJwtGenerator::builder()
             .signing_client(vault_client)
             .key_resolver(Arc::new(
                 PrefixTransitKeyResolver::builder()
                     .prefix(ACCESS_TOKEN_SIGNING_KEY_PREFIX)
+                    .maybe_algorithm(cfg.token.signing_algorithm)
                     .build(),
             ))
             .build(),
@@ -511,7 +525,7 @@ fn create_jwt_components(
     let jwt_verifier = Arc::new(
         LocalJwtVerifier::builder()
             .verification_key_resolver(verification_key_resolver)
-            .signing_algorithm(SigningAlgorithm::EdDSA)
+            .allowed_algorithms(cfg.token.effective_allowed_algorithms())
             .build(),
     );
 
@@ -656,6 +670,7 @@ async fn create_vault_client(vault: &VaultConfig) -> Result<Arc<HashicorpVaultCl
         .vault_url(vault_url)
         .auth_config(auth_config)
         .signing_key_name(vault.signing_key_name.clone())
+        .signing_key_type(vault.signing_key_type)
         .maybe_mount_path(vault.mount_path.clone())
         .build();
 

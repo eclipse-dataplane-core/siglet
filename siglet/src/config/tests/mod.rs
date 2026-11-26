@@ -13,9 +13,9 @@
 #![allow(clippy::unwrap_used)]
 
 use crate::config::{
-    ClaimMapping, EndpointMapping, ManagementApiAuthConfig, PostgresPoolConfig, SigletConfig, SignalingAuthConfig,
-    StorageBackend, TokenApiAuthConfig, TokenConfig, TokenSource, TransferType, ValidationError, VaultAuth,
-    VaultConfig,
+    ClaimMapping, EndpointMapping, KeyType, ManagementApiAuthConfig, PostgresPoolConfig, SigletConfig,
+    SignalingAuthConfig, SigningAlgorithm, StorageBackend, TokenApiAuthConfig, TokenConfig, TokenSource, TransferType,
+    ValidationError, VaultAuth, VaultConfig,
 };
 use std::net::{IpAddr, Ipv4Addr};
 
@@ -805,6 +805,7 @@ fn test_all_possible_errors() {
             token: None, // Error 7 (combined)
             token_file: None,
             signing_key_name: "".to_string(), // Error 8
+            signing_key_type: KeyType::Ed25519,
             mount_path: None,
             token_subpath: None,
             use_http_resolution: false,
@@ -2385,4 +2386,70 @@ fn test_postgres_pool_zero_idle_and_lifetime_disable_limits() {
 
     assert_eq!(options.get_idle_timeout(), None);
     assert_eq!(options.get_max_lifetime(), None);
+}
+
+// ============================================================================
+// Signing key type and algorithms
+// ============================================================================
+
+#[test]
+fn test_signing_defaults_to_ed25519_and_all_algorithms() {
+    let config = create_valid_config();
+    assert_eq!(config.vault.signing_key_type, KeyType::Ed25519);
+    assert_eq!(config.token.signing_algorithm, None);
+    assert_eq!(
+        config.token.effective_allowed_algorithms(),
+        SigningAlgorithm::ALL.to_vec()
+    );
+}
+
+#[test]
+fn test_signing_key_type_and_algorithms_parse() {
+    let vault: VaultConfig = serde_json::from_str(r#"{ "signing_key_type": "rsa-3072" }"#).unwrap();
+    assert_eq!(vault.signing_key_type, KeyType::Rsa3072);
+
+    let token: TokenConfig =
+        serde_json::from_str(r#"{ "signing_algorithm": "PS256", "allowed_algorithms": ["EdDSA", "ES256"] }"#).unwrap();
+    assert_eq!(token.signing_algorithm, Some(SigningAlgorithm::PS256));
+    assert_eq!(
+        token.effective_allowed_algorithms(),
+        vec![SigningAlgorithm::EdDSA, SigningAlgorithm::ES256]
+    );
+}
+
+#[test]
+fn test_unsupported_key_type_or_algorithm_fails_to_parse() {
+    assert!(serde_json::from_str::<VaultConfig>(r#"{ "signing_key_type": "ecdsa-p521" }"#).is_err());
+    assert!(serde_json::from_str::<TokenConfig>(r#"{ "signing_algorithm": "HS256" }"#).is_err());
+    assert!(serde_json::from_str::<TokenConfig>(r#"{ "allowed_algorithms": ["none"] }"#).is_err());
+}
+
+#[test]
+fn test_rsa_algorithm_variant_with_rsa_key_is_valid() {
+    let mut config = create_valid_config();
+    config.vault.signing_key_type = KeyType::Rsa2048;
+    config.token.signing_algorithm = Some(SigningAlgorithm::PS512);
+    assert!(config.validate().is_ok(), "got: {:?}", validation_messages(&config));
+}
+
+#[test]
+fn test_signing_algorithm_incompatible_with_key_type_is_rejected() {
+    let mut config = create_valid_config();
+    config.token.signing_algorithm = Some(SigningAlgorithm::RS256); // default key type is ed25519
+    let messages = validation_messages(&config);
+    assert!(
+        messages.iter().any(|msg| msg.contains("token.signing_algorithm")),
+        "got: {messages:?}"
+    );
+}
+
+#[test]
+fn test_empty_allowed_algorithms_is_rejected() {
+    let mut config = create_valid_config();
+    config.token.allowed_algorithms = Some(vec![]);
+    let messages = validation_messages(&config);
+    assert!(
+        messages.iter().any(|msg| msg.contains("token.allowed_algorithms")),
+        "got: {messages:?}"
+    );
 }

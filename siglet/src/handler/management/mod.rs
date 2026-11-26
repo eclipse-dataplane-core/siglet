@@ -16,7 +16,9 @@
 //!
 //! - **Signing-key mappings** (`/key-mappings`) drive the consumer-side token renewal flow: each
 //!   associates a participant context with the Vault transit key name and the `kid` used to sign
-//!   its proof JWTs (see [`dsdk_facet_core::jwt::MappingTransitKeyResolver`]).
+//!   its proof JWTs (see [`dsdk_facet_core::jwt::MappingTransitKeyResolver`]). An optional
+//!   `algorithm` (e.g. `"PS256"`) selects the JWS algorithm; when omitted it follows the Vault key
+//!   type (Ed25519 → EdDSA, ECDSA P-256 → ES256, P-384 → ES384, RSA → RS256).
 //! - **Transfer-type mappings** (`/transfer-type-mappings`) associate a participant context with
 //!   its full set of transfer-type → endpoint mappings, overriding the static configuration for
 //!   that context (see [`crate::transfer_type`]).
@@ -29,7 +31,7 @@ use axum::{
     routing::{get, post, put},
 };
 use bon::Builder;
-use dsdk_facet_core::jwt::{SigningKeyMapping, SigningKeyMappingRepository};
+use dsdk_facet_core::jwt::{SigningAlgorithm, SigningKeyMapping, SigningKeyMappingRepository};
 use dsdk_facet_core::util::path::validate_path_segment;
 use reqwest::StatusCode;
 use serde::Deserialize;
@@ -53,6 +55,8 @@ mod tests;
 pub struct KeyMappingRequest {
     pub key_name: String,
     pub kid: String,
+    #[serde(default)]
+    pub algorithm: Option<SigningAlgorithm>,
 }
 
 /// Handler exposing CRUD over [`SigningKeyMapping`]s and [`TransferTypeMapping`]s.
@@ -143,6 +147,7 @@ async fn update_key_mapping(
         .participant_context_id(&id)
         .key_name(body.key_name)
         .kid(body.kid)
+        .maybe_algorithm(body.algorithm)
         .build();
     validate_key_mapping(&mapping)?;
     repo.update(mapping).await?;

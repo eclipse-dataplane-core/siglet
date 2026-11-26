@@ -1,8 +1,8 @@
 ![](./docs/logo/siglet.logo.svg)
 
 Siglet is a Data Plane built on the [Eclipse Data Plane SDK for Rust](https://github.com/eclipse-dataplane-core/dataplane-sdk-rust).
-It implements Data Plane Signaling and issues Ed25519-signed access tokens backed by HashiCorp Vault, with PostgreSQL for
-persistence. It is built from the [Facet-RS](https://github.com/eclipse-dataplane-core/dsdk-facet-rs) building blocks.
+It implements Data Plane Signaling and issues access tokens signed with HashiCorp Vault transit keys (Ed25519 by default;
+ECDSA P-256/P-384 and RSA are also supported), with PostgreSQL for persistence. It is built from the [Facet-RS](https://github.com/eclipse-dataplane-core/dsdk-facet-rs) building blocks.
 
 See [docs/siglet.md](docs/siglet.md) for the runtime reference: architecture, token shape, API authentication,
 configuration, and Vault setup.

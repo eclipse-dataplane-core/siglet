@@ -11,6 +11,7 @@
 //
 use bon::Builder;
 use config::{Config, Environment, File};
+pub use dsdk_facet_core::jwt::{KeyType, SigningAlgorithm};
 pub use dsdk_facet_core::token::client::RefreshEndpointPolicy;
 use dsdk_facet_core::token::manager::RESERVED_CLAIMS;
 use serde::{Deserialize, Serialize};
@@ -533,6 +534,12 @@ pub struct VaultConfig {
     pub token_file: Option<String>,
     #[serde(default = "default_vault_signing_key_name")]
     pub signing_key_name: String,
+    /// Vault transit key type used when Siglet creates `signing_key_name` at startup because it
+    /// does not exist yet: `ed25519` (default), `ecdsa-p256`, `ecdsa-p384`, `rsa-2048`,
+    /// `rsa-3072` or `rsa-4096`. An existing key is never changed; the JWS algorithm always
+    /// follows the actual Vault key type.
+    #[serde(default = "default_vault_signing_key_type")]
+    pub signing_key_type: KeyType,
     /// Optional mount path for the KV v2 secrets engine. When unset, the Vault client
     /// defaults to `"secret"`.
     #[serde(default)]
@@ -557,6 +564,7 @@ impl Default for VaultConfig {
             token: None,
             token_file: None,
             signing_key_name: DEFAULT_VAULT_SIGNING_KEY_NAME.to_string(),
+            signing_key_type: default_vault_signing_key_type(),
             mount_path: None,
             token_subpath: None,
             use_http_resolution: false,
@@ -584,6 +592,14 @@ pub struct TokenConfig {
     pub issuer: Option<String>,
     pub refresh_endpoint: Option<String>,
     pub server_secret: Option<String>,
+    /// JWS algorithm for the access tokens Siglet signs. When unset, it follows the Vault signing
+    /// key type (Ed25519 → `EdDSA`, ECDSA P-256 → `ES256`, P-384 → `ES384`, RSA → `RS256`).
+    /// Only needed to choose another RSA variant: `RS384`, `RS512`, `PS256`, `PS384`, `PS512`.
+    pub signing_algorithm: Option<SigningAlgorithm>,
+    /// JWS algorithms accepted on incoming tokens verified against DID documents (consumer
+    /// proof JWTs). When unset, every supported algorithm is accepted: `EdDSA`, `ES256`, `ES384`,
+    /// `RS256`, `RS384`, `RS512`, `PS256`, `PS384`, `PS512`.
+    pub allowed_algorithms: Option<Vec<SigningAlgorithm>>,
     /// Which counterparty refresh endpoints Siglet accepts in a data address and calls to refresh
     /// a token. HTTPS-only by default; see [`RefreshEndpointPolicy`].
     ///
@@ -809,6 +825,24 @@ impl SigletConfig {
         // Validate vault signing key name
         if self.vault.signing_key_name.is_empty() {
             errors.push("vault_signing_key_name cannot be empty".to_string());
+        }
+
+        // The access-token algorithm must be usable with the configured Vault key type.
+        if let Some(algorithm) = self.token.signing_algorithm
+            && let Err(e) = self.vault.signing_key_type.resolve_algorithm(Some(algorithm))
+        {
+            errors.push(format!(
+                "token.signing_algorithm: {} (set vault.signing_key_type to match the Vault key)",
+                e
+            ));
+        }
+
+        if let Some(allowed) = &self.token.allowed_algorithms
+            && allowed.is_empty()
+        {
+            errors.push(
+                "token.allowed_algorithms cannot be empty; omit it to accept every supported algorithm".to_string(),
+            );
         }
 
         // A blank allowed host would never match anything, which almost certainly means a typo
@@ -1041,6 +1075,20 @@ const fn default_management_api_port() -> u16 {
 
 fn default_bind() -> IpAddr {
     DEFAULT_BIND_ADDRESS
+}
+
+fn default_vault_signing_key_type() -> KeyType {
+    KeyType::Ed25519
+}
+
+impl TokenConfig {
+    /// The algorithms accepted on incoming DID-verified tokens: `allowed_algorithms`, or every
+    /// supported algorithm when unset.
+    pub fn effective_allowed_algorithms(&self) -> Vec<SigningAlgorithm> {
+        self.allowed_algorithms
+            .clone()
+            .unwrap_or_else(|| SigningAlgorithm::ALL.to_vec())
+    }
 }
 
 fn default_vault_signing_key_name() -> String {
