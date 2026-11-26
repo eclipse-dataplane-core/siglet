@@ -34,3 +34,12 @@ cel = { version = "0.15.0", features = ["json"] }
 
 [workspace.lints.clippy]
 unwrap_used = "deny"
+
+# TEMPORARY: the multi-algorithm signing changes (dsdk-facet-rs#134) are merged but not yet
+# released, pending Eclipse dependency vetting. Remove this section and bump the dsdk-facet-*
+# versions once the next facet release is published on crates.io.
+[patch.crates-io]
+dsdk-facet-core = { git = "https://github.com/eclipse-dataplane-core/dsdk-facet-rs", rev = "059fc77e55f62c9302f4fd91d23e83340d6f4a91" }
+dsdk-facet-postgres = { git = "https://github.com/eclipse-dataplane-core/dsdk-facet-rs", rev = "059fc77e55f62c9302f4fd91d23e83340d6f4a91" }
+dsdk-facet-hashicorp-vault = { git = "https://github.com/eclipse-dataplane-core/dsdk-facet-rs", rev = "059fc77e55f62c9302f4fd91d23e83340d6f4a91" }
+dsdk-facet-testcontainers = { git = "https://github.com/eclipse-dataplane-core/dsdk-facet-rs", rev = "059fc77e55f62c9302f4fd91d23e83340d6f4a91" }

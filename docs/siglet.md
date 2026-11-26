@@ -62,9 +62,18 @@ Siglet exposes four HTTP servers:
 
 ## Token Shape
 
-Siglet issues JWTs signed with an Ed25519 key managed in Vault (via the transit secrets engine), using the `EdDSA`
-algorithm. Other transit key types (e.g. RSA, ECDSA) are not supported for issued tokens. The token is a standard JWT
-with the following claims:
+Siglet issues JWTs signed with a key managed in Vault (via the transit secrets engine). The JWS algorithm follows the
+transit key type:
+
+| Vault key type                       | `alg`                                     |
+|--------------------------------------|-------------------------------------------|
+| `ed25519` (default)                  | `EdDSA`                                   |
+| `ecdsa-p256`                         | `ES256`                                   |
+| `ecdsa-p384`                         | `ES384`                                   |
+| `rsa-2048` / `rsa-3072` / `rsa-4096` | `RS256` (default), `RS384`, `RS512`, `PS256`, `PS384`, `PS512` |
+
+For RSA keys, `token.signing_algorithm` picks the variant. `ecdsa-p521` is not supported (there is no ES512 support in
+the underlying JWT library), and neither are symmetric keys. The token is a standard JWT with the following claims:
 
 ### Standard Claims
 
@@ -167,6 +176,8 @@ Response (JSON Web Key Set):
   "keys": [
     {
       "kty": "OKP",
+      "use": "sig",
+      "alg": "EdDSA",
       "crv": "Ed25519",
       "kid": "signing-siglet-1",
       "x": "<base64url-encoded-public-key>"
@@ -174,6 +185,9 @@ Response (JSON Web Key Set):
   ]
 }
 ```
+
+With an ECDSA key the entries are `"kty": "EC"` with `crv` (`P-256`/`P-384`), `x` and `y`; with an RSA key they are
+`"kty": "RSA"` with `n` and `e`. Every entry carries the `alg` Siglet signs with, so verifiers can pin it.
 
 The `/keys` endpoint is **public** — it publishes only public keys and is the discovery mechanism consumers use to
 verify Siglet-issued tokens, so it requires no authentication even when token-API auth is enabled.
@@ -242,7 +256,7 @@ The verifier is interoperable with providers that expose keys via JWKS sets.
 // Header
 {
   "alg": "EdDSA",
-  // accepted: EdDSA, RS256, ES256
+  // accepted: EdDSA, ES256, ES384, RS256, RS384, RS512, PS256, PS384, PS512
   "typ": "JWT",
   // tolerated, not enforced
   "kid": "<key id present in the JWKS>"
@@ -266,8 +280,9 @@ The verifier is interoperable with providers that expose keys via JWKS sets.
 
 Required:
 
-- `alg` must be one of `EdDSA`, `RS256`, or `ES256` (allowlist is fixed in code
-  to prevent algorithm-confusion attacks).
+- `alg` must be one of `EdDSA`, `ES256`, `ES384`, `RS256`, `RS384`, `RS512`,
+  `PS256`, `PS384`, or `PS512` (allowlist is fixed in code to prevent
+  algorithm-confusion attacks; symmetric `HS*` algorithms are always rejected).
 - If the matched JWK advertises an `alg`, it must agree with the JWT header's
   `alg` — a mismatch is rejected before the signature is even checked.
 - `kid` must resolve to a key in the JWKS; without it the request is rejected.
@@ -307,8 +322,8 @@ to RFC 7517; for Ed25519 that looks like:
 }
 ```
 
-RSA and EC keys (RS256/ES256 algorithms) are also supported via standard JWK
-parameters (`n`/`e` for RSA; `crv`/`x`/`y` for EC).
+RSA and EC keys are also supported via standard JWK parameters (`n`/`e` for
+RSA; `crv`/`x`/`y` for EC P-256/P-384).
 
 ### Rejection Responses
 
@@ -480,7 +495,9 @@ opt out with `mode = "disabled"`. It is an admin API that spans many participant
 token API — the JWT `sub` is **not** bound to the path; any valid token with the right scope may manage any
 participant context. Grant `siglet-mgmt-api:write` only to platform operators: a signing-key mapping decides which
 Vault transit key signs a participant context's proof JWTs. Participant context ids and `keyName` values must be plain
-identifiers (see [Token Deletion](#token-deletion)); anything else is rejected with `400`.
+identifiers (see [Token Deletion](#token-deletion)); anything else is rejected with `400`. A mapping may also carry an
+optional `algorithm` (e.g. `"PS256"`) to pick the RSA variant; when omitted it follows the transit key type, and an
+unsupported value is rejected.
 
 Scopes are fixed per HTTP method (not configurable): reads (`GET`) require `siglet-mgmt-api:read` and writes
 (`POST`/`PUT`/`DELETE`) require `siglet-mgmt-api:write`. A missing or non-matching scope returns `403`; a
@@ -888,6 +905,10 @@ token = "hvs.xxxxxxxxxxxx"
 token_file = "/var/run/secrets/kubernetes.io/serviceaccount/token"
 # Transit key name used to sign access tokens. Default: "signing-siglet"
 signing_key_name = "signing-siglet"
+# Key type used when Siglet creates signing_key_name at startup because it does not exist.
+# One of: ed25519 (default), ecdsa-p256, ecdsa-p384, rsa-2048, rsa-3072, rsa-4096.
+# An existing key is never changed; signing always follows the actual Vault key type.
+signing_key_type = "ed25519"
 # Allow HTTP for DID Web resolution. Default: false. Never enable in production.
 use_http_resolution = false
 
@@ -938,6 +959,13 @@ refresh_endpoint = "https://siglet.example.com/token"
 # Hex-encoded secret used to derive symmetric keys (HMAC, etc.).
 # Must be at least 16 bytes (32 hex chars). Generate with: openssl rand -hex 32
 server_secret = "0102030405060708090a0b0c0d0e0f10..."
+# JWS algorithm for issued access tokens. Default: derived from the Vault key type
+# (EdDSA / ES256 / ES384 / RS256). Only needed to pick another RSA variant:
+# RS384, RS512, PS256, PS384, PS512. Must be compatible with vault.signing_key_type.
+# signing_algorithm = "PS256"
+# Algorithms accepted on consumer proof JWTs verified against DID documents.
+# Default: all of EdDSA, ES256, ES384, RS256, RS384, RS512, PS256, PS384, PS512.
+# allowed_algorithms = ["EdDSA", "ES256"]
 
 # Which counterparty refresh endpoints Siglet will call (consumer side). The endpoint arrives in
 # the provider's data address and receives the refresh token plus a proof JWT signed with the
@@ -1098,11 +1126,17 @@ key. The key must be created before starting Siglet.
 # Enable the transit engine (if not already enabled)
 vault secrets enable transit
 
-# Create the signing key (must be Ed25519; other key types are not supported)
+# Create the signing key. Supported types: ed25519 (default), ecdsa-p256, ecdsa-p384,
+# rsa-2048, rsa-3072, rsa-4096
 vault write -f transit/keys/signing-siglet type=ed25519
 ```
 
-The key name must match `vault.signing_key_name` in the configuration (default: `signing-siglet`).
+The key name must match `vault.signing_key_name` in the configuration (default: `signing-siglet`), and
+`vault.signing_key_type` should match the key's type. For RSA keys, set `token.signing_algorithm` to use a variant other
+than `RS256`.
+
+DID documents of participants whose proof JWTs Siglet verifies may publish Ed25519 keys as `publicKeyMultibase`; RSA and
+EC keys must be published as `publicKeyJwk`.
 
 ### KV Store (Consumer Token Cache)
 

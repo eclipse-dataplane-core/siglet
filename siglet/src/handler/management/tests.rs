@@ -744,3 +744,82 @@ async fn test_transfer_type_create_rejects_invalid_endpoint_mapping_expression()
         "the message should point at the offending endpoint mapping"
     );
 }
+
+#[tokio::test]
+async fn test_create_and_update_with_algorithm() {
+    let repo = Arc::new(MemorySigningKeyMappingStore::new());
+    let app = router_with(repo.clone());
+
+    let create = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/key-mappings",
+            serde_json::json!({
+                "participantContextId": "pc-1",
+                "keyName": "client-signing-pc-1",
+                "kid": "client-signing-pc-1-1",
+                "algorithm": "PS256"
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(create.status(), StatusCode::CREATED);
+    assert_eq!(
+        repo.find("pc-1").await.unwrap().algorithm,
+        Some(dsdk_facet_core::jwt::SigningAlgorithm::PS256)
+    );
+
+    let get = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/key-mappings/pc-1")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(body_json(get).await["algorithm"], "PS256");
+
+    // Updating without an algorithm clears it (falls back to the key type default).
+    let update = app
+        .oneshot(json_request(
+            "PUT",
+            "/key-mappings/pc-1",
+            serde_json::json!({ "keyName": "client-signing-pc-1", "kid": "client-signing-pc-1-2" }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(update.status(), StatusCode::NO_CONTENT);
+    assert_eq!(repo.find("pc-1").await.unwrap().algorithm, None);
+}
+
+#[tokio::test]
+async fn test_create_with_unsupported_algorithm_is_rejected() {
+    let repo = Arc::new(MemorySigningKeyMappingStore::new());
+    let app = router_with(repo.clone());
+
+    for algorithm in ["HS256", "ES512", "none"] {
+        let response = app
+            .clone()
+            .oneshot(json_request(
+                "POST",
+                "/key-mappings",
+                serde_json::json!({
+                    "participantContextId": "pc-1",
+                    "keyName": "k",
+                    "kid": "kid",
+                    "algorithm": algorithm
+                }),
+            ))
+            .await
+            .unwrap();
+        assert!(
+            response.status().is_client_error(),
+            "{algorithm}: expected a 4xx, got {}",
+            response.status()
+        );
+    }
+    assert!(repo.find("pc-1").await.is_err());
+}

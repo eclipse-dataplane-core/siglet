@@ -40,7 +40,7 @@
 //! ```json
 //! {
 //!   "kid": "<key id present in JWKS>",   // header
-//!   "alg": "EdDSA" | "RS256" | "ES256",  // header
+//!   "alg": "EdDSA" | "ES256" | "ES384" | "RS256" | "RS384" | "RS512" | "PS256" | "PS384" | "PS512",  // header
 //!   "sub": "<participant_context_id>",   // payload — MUST equal URL param when present
 //!   "scope": "dplane-signaling",          // payload — space-delimited; MUST contain the required scope
 //!   "exp": <unix-seconds>,                // payload
@@ -73,6 +73,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use dataplane_sdk::core::model::{control_plane::ControlPlane, participant::ParticipantContext};
+use dsdk_facet_core::jwt::SigningAlgorithm;
 use jsonwebtoken::{
     Algorithm, DecodingKey, Validation, decode, decode_header,
     jwk::{JwkSet, KeyAlgorithm},
@@ -87,13 +88,17 @@ use tower::{Layer, Service};
 /// Kept here (rather than inline) so any future renaming stays at one location.
 const PATH_PARAM_PC_ID: &str = "participant_context_id";
 
-/// Allowlist of signing algorithms accepted on incoming JWTs.
+/// Whether a signing algorithm is accepted on incoming JWTs.
 ///
-/// Constraining this list (rather than trusting `header.alg`) defeats the classic
+/// Constraining the set (rather than trusting `header.alg`) defeats the classic
 /// alg-confusion attack where a forged token claims a weaker algorithm than the
-/// JWK supports. EdDSA the default; RS256 and ES256 are included, so deployments fronted by Keycloak, Auth0,
-/// or other OIDC IdPs work out of the box.
-const ALLOWED_ALGORITHMS: &[Algorithm] = &[Algorithm::EdDSA, Algorithm::RS256, Algorithm::ES256];
+/// JWK supports. The allowlist is every asymmetric algorithm Siglet supports
+/// ([`SigningAlgorithm::ALL`]: EdDSA, ES256/384, RS256/384/512, PS256/384/512), so
+/// deployments fronted by Keycloak, Auth0, or other OIDC IdPs work out of the box.
+/// Symmetric HS* algorithms are always rejected.
+fn is_allowed_algorithm(alg: Algorithm) -> bool {
+    SigningAlgorithm::try_from(alg).is_ok()
+}
 
 /// What the middleware does with an enabled-mode request whose path carries no
 /// `participant_context_id`.
@@ -552,7 +557,7 @@ async fn verify_jwt(
     // Pin the algorithm to our allowlist *before* touching the key. This prevents
     // an attacker from inducing alg-confusion by signing a token with HS256 using
     // the public RSA modulus published in the JWKS as a shared secret.
-    if !ALLOWED_ALGORITHMS.contains(&header.alg) {
+    if !is_allowed_algorithm(header.alg) {
         return Err(AuthError::InvalidSignature(format!(
             "algorithm '{:?}' not in allowlist",
             header.alg
